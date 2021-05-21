@@ -11,6 +11,7 @@ import numpy as np
 import json
 from omegaconf import OmegaConf
 import torch.nn as nn
+import inspect
 
 import torch
 import torch.optim as optim
@@ -87,11 +88,15 @@ class ContrastiveLossTrainer:
     # Model initialization
     self.cur_device = torch.cuda.current_device()
     Model = load_model(config.net.model)
-    model = Model(
-        num_feats,
-        config.net.model_n_out,
-        config,
-        D=3)
+    if inspect.isclass(Model):
+      model = Model(
+          num_feats,
+          config.net.model_n_out,
+          config,
+          D=3)
+    else:
+      model = Model
+      
     model = model.cuda(device=self.cur_device)
     if config.misc.num_gpus > 1:
         model = torch.nn.parallel.DistributedDataParallel(

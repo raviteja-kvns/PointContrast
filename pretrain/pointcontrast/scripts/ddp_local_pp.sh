@@ -1,14 +1,12 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-#  
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
+# Implementation with Point Pillars
 
 #!/bin/bash
 
 export OUT_DIR=./tmp_out_dir
 
-python ddp_train.py \
-	net.model=Res16UNet34C \
+# python -m pudb ddp_train_pp.py \
+python ddp_train_pp.py \
+	net.model=PointPillarsPC \
 	net.conv1_kernel_size=3 \
 	opt.lr=0.1 \
 	opt.max_iter=60000 \

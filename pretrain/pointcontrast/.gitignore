@@ -18,3 +18,5 @@ launch_scripts
 .vscode/settings.json
 example_dataset/data_f25*
 example_dataset/overlap-30-full.txt
+example_dataset/
+../../data/

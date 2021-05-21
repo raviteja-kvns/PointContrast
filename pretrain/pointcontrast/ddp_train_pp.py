@@ -63,8 +63,9 @@ def main(config):
 def single_proc_run(config):
   train_loader = make_data_loader(
       config,
-      config.trainer.batch_size,
-      num_threads=config.misc.train_num_thread)
+      config.trainer.batch_size)
+      # num_threads=1)
+      # num_threads=config.misc.train_num_thread)
 
   Trainer = get_trainer(config.trainer.trainer)
   trainer = Trainer(
