@@ -36,6 +36,9 @@ from torch.serialization import default_restore_location
 
 torch.autograd.set_detect_anomaly(True)
 
+from pcdet.datasets.carla.mdls.carla_mdls_dataset import CarlaMdlsDataset
+from pcdet.config import cfg, cfg_from_list, cfg_from_yaml_file, log_config_to_file
+from pcdet.models import load_data_to_gpu
 
 def _hash(arr, M):
   if isinstance(arr, np.ndarray):
@@ -401,6 +404,135 @@ class PointNCELossTrainer(ContrastiveLossTrainer):
     sinput1 = ME.SparseTensor(
         input_dict['sinput1_F'], coords=input_dict['sinput1_C']).to(self.cur_device)
     F1 = self.model(sinput1).F
+
+    N0, N1 = input_dict['pcd0'].shape[0], input_dict['pcd1'].shape[0]
+    pos_pairs = input_dict['correspondences'].to(self.cur_device)
+    
+    q_unique, count = pos_pairs[:, 0].unique(return_counts=True)
+    uniform = torch.distributions.Uniform(0, 1).sample([len(count)]).to(self.cur_device)
+    off = torch.floor(uniform*count).long()
+    cums = torch.cat([torch.tensor([0], device=self.cur_device), torch.cumsum(count, dim=0)[0:-1]], dim=0)
+    k_sel = pos_pairs[:, 1][off+cums]
+
+    q = F0[q_unique.long()]
+    k = F1[k_sel.long()]
+
+    if self.npos < q.shape[0]:
+        sampled_inds = np.random.choice(q.shape[0], self.npos, replace=False)
+        q = q[sampled_inds]
+        k = k[sampled_inds]
+    
+    npos = q.shape[0] 
+
+    # pos logit
+    logits = torch.mm(q, k.transpose(1, 0)) # npos by npos
+    labels = torch.arange(npos).cuda().long()
+    out = torch.div(logits, self.T)
+    out = out.squeeze().contiguous()
+
+    criterion = NCESoftmaxLoss().cuda()
+    loss = criterion(out, labels)
+
+    loss.backward()
+
+    result = {"loss": loss}
+    if self.config.misc.num_gpus > 1:
+      result = du.scaled_all_reduce_dict(result, self.config.misc.num_gpus)
+    batch_loss += result["loss"].item()
+
+    self.optimizer.step()
+
+    torch.cuda.empty_cache()
+    total_timer.toc()
+    data_meter.update(data_time)
+    return batch_loss
+
+
+class PCPointNCELossTrainer(ContrastiveLossTrainer):
+
+  def __init__(
+      self,
+      config,
+      data_loader):
+    ContrastiveLossTrainer.__init__(self, config, data_loader)
+    
+    self.T = config.misc.nceT
+    self.npos = config.misc.npos
+
+    self.stat_freq = config.trainer.stat_freq
+    self.lr_update_freq = config.trainer.lr_update_freq
+
+    # cfg_file_path = '/dg-hl-fast/codes/OpenPCDet/tools/cfgs/carla_mdls_models/pointpillar_point_contrast.yaml'
+    # cfg_from_yaml_file(cfg_file_path, cfg)
+
+    # self.carla_mdls_dataset = CarlaMdlsDataset(cfg.DATA_CONFIG, cfg.CLASS_NAMES)
+
+  def train(self):
+
+    curr_iter = self.curr_iter
+    data_loader = self.data_loader
+    data_loader_iter = self.data_loader.__iter__()
+    data_meter, data_timer, total_timer = AverageMeter(), Timer(), Timer()
+    
+    total_loss = 0
+    total_num = 0.0
+
+    while (curr_iter < self.config.opt.max_iter):
+
+      curr_iter += 1
+      epoch = curr_iter / len(self.data_loader)
+      batch_loss = self._train_iter(data_loader_iter, [data_meter, data_timer, total_timer])
+      total_loss += batch_loss
+      total_num += 1
+
+      if curr_iter % self.lr_update_freq == 0 or curr_iter == 1:
+        lr = self.scheduler.get_last_lr()
+        self.scheduler.step()
+        if self.is_master:
+          logging.info(f" Epoch: {epoch}, LR: {lr}")
+          self._save_checkpoint(curr_iter, 'checkpoint_'+str(curr_iter))
+
+      # Print logs
+      if curr_iter % self.stat_freq == 0 and self.is_master:
+        self.writer.add_scalar('train/loss', batch_loss, curr_iter)
+        logging.info(
+            "Train Epoch: {:.3f} [{}/{}], Current Loss: {:.3e}"
+            .format(epoch, curr_iter,
+                    len(self.data_loader), batch_loss) +
+            "\tData time: {:.4f}, Train time: {:.4f}, Iter time: {:.4f}, LR: {}".format(
+                data_meter.avg, total_timer.avg - data_meter.avg, total_timer.avg, self.scheduler.get_last_lr()))
+        data_meter.reset()
+        total_timer.reset()
+
+
+  def _train_iter(self, data_loader_iter, timers):
+    data_meter, data_timer, total_timer = timers
+    
+    self.optimizer.zero_grad()
+    batch_pos_loss, batch_neg_loss, batch_loss = 0, 0, 0
+    data_time = 0
+    total_timer.tic()
+    
+    data_timer.tic()
+    input_dict = data_loader_iter.next()
+    data_time += data_timer.toc(average=False)
+
+    # sinput0 = ME.SparseTensor(
+    #     input_dict['sinput0_F'], coords=input_dict['sinput0_C']).to(self.cur_device)
+    # F0 = self.model(sinput0).F
+
+    # sinput1 = ME.SparseTensor(
+    #     input_dict['sinput1_F'], coords=input_dict['sinput1_C']).to(self.cur_device)
+    # F1 = self.model(sinput1).F
+
+    # input_dict['bd_0'].to(self.cur_device)
+    # input_dict['bd_1'].to(self.cur_device)
+
+    load_data_to_gpu(input_dict['bd_0'])
+    load_data_to_gpu(input_dict['bd_1'])
+
+    F0 = self.model(input_dict['bd_0']).F
+    F1 = self.model(input_dict['bd_1']).F
 
     N0, N1 = input_dict['pcd0'].shape[0], input_dict['pcd1'].shape[0]
     pos_pairs = input_dict['correspondences'].to(self.cur_device)

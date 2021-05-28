@@ -18,7 +18,7 @@ grid_size = (point_cloud_range[3:6] - point_cloud_range[0:3]) / np.array(voxel_s
 grid_size = np.round(grid_size).astype(np.int64)
 
 train_set_dataset_mock = {
-    "point_feature_encoder": dotdict({'num_point_features': 4 }), #TODO: Try reading it from config
+    "point_feature_encoder": dotdict({'num_point_features': 3 }), #TODO: Try reading it from config
     "grid_size": grid_size,
     "point_cloud_range": point_cloud_range,
     "voxel_size": voxel_size,

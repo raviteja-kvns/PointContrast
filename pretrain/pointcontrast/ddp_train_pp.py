@@ -18,7 +18,7 @@ from lib.ddp_data_loaders import make_data_loader
 import lib.multiprocessing as mpu
 import hydra
 
-from lib.ddp_trainer import HardestContrastiveLossTrainer, PointNCELossTrainer
+from lib.ddp_trainer import HardestContrastiveLossTrainer, PointNCELossTrainer, PCPointNCELossTrainer
 
 ch = logging.StreamHandler(sys.stdout)
 logging.getLogger().setLevel(logging.INFO)
@@ -35,6 +35,8 @@ def get_trainer(trainer):
     return HardestContrastiveLossTrainer
   elif trainer == 'PointNCELossTrainer':
     return PointNCELossTrainer
+  elif trainer == 'PCPointNCELossTrainer':
+    return PCPointNCELossTrainer
   else:
     raise ValueError(f'Trainer {trainer} not found')
 
