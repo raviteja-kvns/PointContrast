@@ -1,0 +1,3 @@
+# Running the training
+cd pretrain/pointcontrast
+./scripts/ddp_local_pp.sh

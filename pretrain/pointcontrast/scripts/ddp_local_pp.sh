@@ -1,18 +1,15 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-#  
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
+# Implementation with Point Pillars
 
 #!/bin/bash
 
 export OUT_DIR=./tmp_out_dir
 
-python ddp_train.py \
-	net.model=Res16UNet34C \
+python -m pudb ddp_train_pp.py \
+	net.model=PointPillarsPC \
 	net.conv1_kernel_size=3 \
 	opt.lr=0.1 \
 	opt.max_iter=60000 \
-	data.dataset=ScanNetMatchPairDataset \
+	data.dataset=PCCarlaMDLSDataset \
 	data.voxel_size=0.025 \
 	trainer.batch_size=4 \
 	trainer.stat_freq=1 \
@@ -21,10 +18,10 @@ python ddp_train.py \
 	misc.npos=4096 \
 	misc.nceT=0.4 \
 	misc.out_dir=${OUT_DIR} \
-	trainer.trainer=HardestContrastiveLossTrainer \
+	trainer.trainer=PCPointNCELossTrainer \
 	data.dataset_root_dir='/dg-hl-fast/codes/PointContrast/pretrain/pointcontrast/example_dataset' \
 	data.scannet_match_dir='/dg-hl-fast/codes/PointContrast/pretrain/pointcontrast/example_dataset/overlap-30-50p-subset.txt' \
-	# trainer.trainer=PointNCELossTrainer \
-
+	# trainer.trainer=HardestContrastiveLossTrainer \
+	# data.dataset=ScanNetMatchPairDataset \
 # Notes
 # Batch size - taken as 4 per gpu by PointContrast work
